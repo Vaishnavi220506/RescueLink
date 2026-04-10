@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>RescueLink - Community Crisis Hub</title>
+  <link rel="stylesheet" href="style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+</head>
+<body>
+
+  <div id="alert-banner" class="alert-banner hidden">
+    <div class="alert-inner">
+      <span class="alert-dot"></span>
+      <span id="alert-text">SEVERE WEATHER WARNING: Cyclone alert issued for coastal districts. Seek shelter immediately.</span>
+    </div>
+    <button onclick="dismissAlert()" class="dismiss-btn">Dismiss</button>
+  </div>
+
+  <nav class="navbar">
+    <div class="brand">
+      <span class="brand-dot"></span>
+      RescueLink
+    </div>
+    <div class="nav-links">
+      <a href="#board">Help Board</a>
+      <a href="#hazard">Report Hazard</a>
+      <a href="#location">Live Location</a>
+      <button onclick="triggerAlert()" class="alert-btn">Test Alert</button>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="hero-text">
+      <p class="hero-tag">Community Crisis Coordination</p>
+      <h1>RescueLink</h1>
+      <p class="hero-sub">Request help, offer resources, report hazards, and share your live location during emergencies.</p>
+    </div>
+    <div class="hero-stats">
+      <div class="stat-card">
+        <span id="stat-help">0</span>
+        <label>Help Requests</label>
+      </div>
+      <div class="stat-card">
+        <span id="stat-offer">0</span>
+        <label>Offers Active</label>
+      </div>
+      <div class="stat-card">
+        <span id="stat-hazard">0</span>
+        <label>Hazards Reported</label>
+      </div>
+    </div>
+  </header>
+
+  <section id="board" class="section">
+    <div class="section-head">
+      <h2>Live Help and Offer Board</h2>
+      <p class="section-desc">Post what you need or what you can give. Every post helps someone.</p>
+    </div>
+
+    <div class="toggle-group">
+      <button id="btn-need" class="toggle-btn active-need" onclick="setMode('need')">I Need Help</button>
+      <button id="btn-offer" class="toggle-btn" onclick="setMode('offer')">I Can Offer</button>
+    </div>
+
+    <div class="card form-card">
+      <div class="form-row">
+        <div class="input-wrap">
+          <label class="form-label">Your Name</label>
+          <input type="text" id="post-name" placeholder="Optional" class="form-input"/>
+        </div>
+        <div class="input-wrap">
+          <label class="form-label">Category</label>
+          <select id="post-category" class="form-select">
+            <option value="food">Food and Water</option>
+            <option value="shelter">Shelter</option>
+            <option value="medical">Medical</option>
+            <option value="transport">Transport</option>
+            <option value="supplies">Supplies</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="input-wrap">
+        <label class="form-label">Description</label>
+        <textarea id="post-message" class="form-textarea" placeholder="Describe what you need or can offer..."></textarea>
+      </div>
+      <div class="form-row">
+        <div class="input-wrap">
+          <label class="form-label">Your Area or Landmark</label>
+          <input type="text" id="post-location" placeholder="e.g. Velachery near bus stop" class="form-input"/>
+        </div>
+        <div class="input-wrap">
+          <label class="form-label">Contact Number</label>
+          <input type="text" id="post-contact" placeholder="Phone or WhatsApp" class="form-input"/>
+        </div>
+      </div>
+      <button onclick="submitPost()" class="submit-btn" id="post-submit-btn">Post to Board</button>
+    </div>
+
+    <div class="filter-bar">
+      <button class="filter-btn active-filter" onclick="filterBoard('all', event)">All</button>
+      <button class="filter-btn" onclick="filterBoard('need', event)">Help Needed</button>
+      <button class="filter-btn" onclick="filterBoard('offer', event)">Offers</button>
+      <button class="filter-btn" onclick="filterBoard('food', event)">Food</button>
+      <button class="filter-btn" onclick="filterBoard('shelter', event)">Shelter</button>
+      <button class="filter-btn" onclick="filterBoard('medical', event)">Medical</button>
+    </div>
+
+    <div id="board-feed" class="board-feed"></div>
+  </section>
+
+  <section id="hazard" class="section section-alt">
+    <div class="section-head">
+      <h2>Hazard Reporter</h2>
+      <p class="section-desc">Report road hazards so your community can stay safe.</p>
+    </div>
+
+    <div class="two-col">
+      <form class="card" onsubmit="submitHazard(event)">
+        <div class="input-wrap">
+          <label class="form-label">Hazard Type</label>
+          <div class="radio-group">
+            <label class="radio-card"><input type="radio" name="htype" value="flood" checked/> Flooding</label>
+            <label class="radio-card"><input type="radio" name="htype" value="road"/> Blocked Road</label>
+            <label class="radio-card"><input type="radio" name="htype" value="power"/> Power Line Down</label>
+            <label class="radio-card"><input type="radio" name="htype" value="debris"/> Debris</label>
+            <label class="radio-card"><input type="radio" name="htype" value="fire"/> Fire</label>
+            <label class="radio-card"><input type="radio" name="htype" value="other"/> Other</label>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="input-wrap">
+            <label class="form-label">Location</label>
+            <input type="text" class="form-input" id="h-location" placeholder="e.g. Anna Nagar near Metro" required/>
+          </div>
+          <div class="input-wrap">
+            <label class="form-label">Severity</label>
+            <select class="form-select" id="h-severity">
+              <option value="low">Low — Minor inconvenience</option>
+              <option value="medium" selected>Medium — Avoid if possible</option>
+              <option value="high">High — Dangerous, avoid completely</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="input-wrap">
+          <label class="form-label">Description</label>
+          <textarea class="form-textarea" id="h-description" placeholder="Describe what you saw..." required></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="input-wrap">
+            <label class="form-label">Reported By</label>
+            <input type="text" class="form-input" id="h-reporter" placeholder="Your name (optional)"/>
+          </div>
+          <div class="input-wrap">
+            <label class="form-label">Time of Incident</label>
+            <input type="datetime-local" class="form-input" id="h-time"/>
+          </div>
+        </div>
+
+        <fieldset class="check-fieldset">
+          <legend>Additional Info</legend>
+          <label class="check-label"><input type="checkbox" id="chk-rescue" onchange="toggleRescue()"/> Rescue needed at this location</label>
+          <label class="check-label"><input type="checkbox" id="chk-ambulance"/> Ambulance required</label>
+          <label class="check-label"><input type="checkbox" id="chk-notified"/> Already notified authorities</label>
+        </fieldset>
+
+        <div id="rescue-detail" class="rescue-box hidden">
+          <label class="form-label">Number of People Stranded</label>
+          <input type="number" class="form-input" id="h-stranded" min="1" placeholder="e.g. 4"/>
+        </div>
+
+        <button type="submit" class="submit-btn red-btn">Submit Hazard Report</button>
+      </form>
+
+      <div class="card hazard-log">
+        <h3>Recent Reports</h3>
+        <div id="hazard-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="location" class="section">
+    <div class="section-head">
+      <h2>Live Location Sharing</h2>
+      <p class="section-desc">Share your real-time location so rescue teams and helpers can find you instantly.</p>
+    </div>
+
+    <div class="location-layout">
+
+      <div class="card location-panel">
+
+        <div id="loc-status-box" class="loc-status-box idle">
+          <div class="loc-icon-wrap">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="10" r="3"/>
+              <path d="M12 2a8 8 0 0 0-8 8c0 5.4 7.05 11.5 7.72 12.06a.5.5 0 0 0 .56 0C13 21.5 20 15.4 20 10a8 8 0 0 0-8-8z"/>
+            </svg>
+          </div>
+          <div>
+            <p id="loc-status-text" class="loc-status-text">Location not shared yet</p>
+            <p id="loc-coords" class="loc-coords"></p>
+          </div>
+        </div>
+
+        <div id="loc-form" class="loc-form hidden">
+          <div class="input-wrap">
+            <label class="form-label">Your Name</label>
+            <input type="text" id="loc-name" placeholder="So helpers can find you" class="form-input"/>
+          </div>
+          <div class="input-wrap">
+            <label class="form-label">Your Status</label>
+            <select id="loc-status-msg" class="form-select" onchange="updateStatusPreview()">
+              <option value="need-rescue">Need Rescue</option>
+              <option value="need-medical">Need Medical Help</option>
+              <option value="stranded">Stranded — Safe for now</option>
+              <option value="offering-help">Offering Help Here</option>
+              <option value="shelter">Shelter Available Here</option>
+            </select>
+          </div>
+          <div class="input-wrap">
+            <label class="form-label">Additional Note</label>
+            <input type="text" id="loc-note" placeholder="e.g. 3rd floor, red building" class="form-input"/>
+          </div>
+          <button onclick="confirmShare()" class="submit-btn">Confirm and Share on Map</button>
+        </div>
+
+        <div class="loc-actions">
+          <button onclick="shareLocation()" class="submit-btn" id="loc-share-btn">Share My Location</button>
+          <button onclick="stopSharing()" class="outline-btn hidden" id="loc-stop-btn">Stop Sharing</button>
+        </div>
+
+        <div class="shared-list">
+          <h4>People Sharing Location</h4>
+          <div id="shared-pins"></div>
+        </div>
+      </div>
+
+      <div class="map-container">
+        <div id="map"></div>
+        <div class="map-legend">
+          <span class="leg"><span class="ldot red"></span> Need Rescue</span>
+          <span class="leg"><span class="ldot orange"></span> Stranded</span>
+          <span class="leg"><span class="ldot green"></span> Offering Help</span>
+          <span class="leg"><span class="ldot blue"></span> Your Location</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="footer-brand">RescueLink</div>
+    <p>Built with HTML, CSS, JavaScript, React &nbsp;|&nbsp; BCSE203E Web Programming</p>
+    <p>In a crisis, every second counts. Stay safe. Help each other.</p>
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
