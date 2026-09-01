@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: rescue_link
+      POSTGRES_USER: rescue
+      POSTGRES_PASSWORD: rescue
+    ports: ["5432:5432"]
+    volumes:
+      - rescue-link-db:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rescue -d rescue_link"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  backend:
+    build: ./backend
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      FRONTEND_URL: http://localhost:4173
+      DATABASE_URL: postgresql://rescue:rescue@db:5432/rescue_link
+      JWT_SECRET: change-this-in-local-production
+      COOKIE_SECRET: change-this-cookie-secret
+    depends_on:
+      db:
+        condition: service_healthy
+    ports: ["4000:4000"]
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:4000/api
+    depends_on: [backend]
+    ports: ["4173:80"]
+volumes:
+  rescue-link-db:

@@ -1,0 +1,21 @@
+import { MapContainer, TileLayer, CircleMarker, Tooltip } from 'react-leaflet';
+import type { LatLngExpression } from 'leaflet';
+import { useState } from 'react';
+import type { Hazard, HelpRequest, ResourceOffer } from '../types';
+import { AlertTriangle, LifeBuoy, MapPin, Package } from 'lucide-react';
+
+const mapCenter: LatLngExpression = [13.004, 80.245];
+type Selected = { kind: 'request'; item: HelpRequest } | { kind: 'offer'; item: ResourceOffer } | { kind: 'hazard'; item: Hazard };
+
+export function MapView({ requests, offers, hazards, full = false, showRequests = true, showOffers = true, showHazards = true, onSelect }: { requests: HelpRequest[]; offers: ResourceOffer[]; hazards: Hazard[]; full?: boolean; showRequests?: boolean; showOffers?: boolean; showHazards?: boolean; onSelect?: (selected: Selected) => void }) {
+  const [selected, setSelected] = useState<Selected | null>(null);
+  const select = (next: Selected) => { setSelected(next); onSelect?.(next); };
+  return <div className={`map-view ${full ? 'map-view-full' : ''}`}><MapContainer center={mapCenter} zoom={full ? 12 : 11} scrollWheelZoom className="leaflet-map"><TileLayer attribution='&copy; OpenStreetMap contributors' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" /><CircleMarker center={[13.0012, 80.2565]} radius={7} pathOptions={{ color: '#408bba', fillColor: '#408bba', fillOpacity: 0.8 }}><Tooltip direction="top">Your approximate area</Tooltip></CircleMarker>{showRequests && requests.map((request) => <CircleMarker key={request.id} center={[request.lat, request.lng]} radius={request.urgency === 'CRITICAL' ? 11 : 8} pathOptions={{ color: '#c9484d', fillColor: '#c9484d', fillOpacity: 0.82 }} eventHandlers={{ click: () => select({ kind: 'request', item: request }) }}><Tooltip direction="top"><strong>{request.title}</strong><br />{request.urgency} · {request.distanceKm.toFixed(1)} km</Tooltip></CircleMarker>)}{showOffers && offers.map((offer) => <CircleMarker key={offer.id} center={[offer.lat, offer.lng]} radius={8} pathOptions={{ color: '#2d927d', fillColor: '#2d927d', fillOpacity: 0.84 }} eventHandlers={{ click: () => select({ kind: 'offer', item: offer }) }}><Tooltip direction="top"><strong>{offer.quantity}</strong><br />{offer.category}</Tooltip></CircleMarker>)}{showHazards && hazards.map((hazard) => <CircleMarker key={hazard.id} center={[hazard.lat, hazard.lng]} radius={hazard.severity === 'CRITICAL' ? 11 : 8} pathOptions={{ color: '#dd8a33', fillColor: '#dd8a33', fillOpacity: 0.84 }} eventHandlers={{ click: () => select({ kind: 'hazard', item: hazard }) }}><Tooltip direction="top"><strong>{hazard.locationLabel}</strong><br />{hazard.type.replaceAll('_', ' ')}</Tooltip></CircleMarker>)}</MapContainer><div className="map-key"><span><i className="key-dot red" />Help needed</span><span><i className="key-dot green" />Resources</span><span><i className="key-dot orange" />Hazards</span><span><i className="key-dot blue" />Your approximate area</span></div>{selected && <MapSidePanel selected={selected} onClose={() => setSelected(null)} />}</div>;
+}
+
+function MapSidePanel({ selected, onClose }: { selected: Selected; onClose: () => void }) {
+  const Icon = selected.kind === 'request' ? LifeBuoy : selected.kind === 'offer' ? Package : AlertTriangle;
+  const title = selected.kind === 'request' ? selected.item.title : selected.kind === 'offer' ? selected.item.description : selected.item.locationLabel;
+  const location = selected.item.locationLabel;
+  return <aside className="map-side-panel"><button className="map-panel-close" aria-label="Close details" onClick={onClose}>×</button><div className={`map-panel-icon ${selected.kind}`}><Icon size={18} /></div><span className="card-kicker">{selected.kind === 'hazard' ? 'Hazard report' : selected.kind === 'offer' ? 'Resource offer' : 'Help request'}</span><h3>{title}</h3><p>{selected.kind === 'request' ? selected.item.description : selected.kind === 'offer' ? `${selected.item.quantity} · ${selected.item.category}` : selected.item.description}</p><div className="map-panel-location"><MapPin size={14} />{location}</div>{selected.kind === 'request' && <button className="btn btn-primary btn-sm">Open request</button>}</aside>;
+}
