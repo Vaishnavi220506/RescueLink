@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { AlertRecord, AuthUser, HazardRecord, NotificationRecord, OfferRecord, RequestRecord, Role, UserRecord } from '../types.js';
+import type { AlertRecord, AuthUser, DashboardStats, HazardRecord, LiveLocationRecord, NotificationRecord, OfferRecord, RequestRecord, Role, UserRecord } from '../types.js';
 
 const ago = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
 const baseUsers: UserRecord[] = [
@@ -25,17 +25,27 @@ export class MemoryStore {
   ];
   alerts: AlertRecord[] = [{ id: 'alert-4001', title: 'Flood warning near Adyar River', description: 'Water levels are rising. Avoid low-lying roads around Kotturpuram and Saidapet.', severity: 'CRITICAL', area: 'Adyar river basin', radiusKm: 5, createdAt: ago(11) }];
   notifications: NotificationRecord[] = [];
+  assignments: Array<{ requestId: string; volunteerId: string; assignedAt: string; releasedAt?: string }> = [];
+  liveLocations = new Map<string, LiveLocationRecord>();
   private votes = new Set<string>();
 
   findUserByEmail(email: string) { return this.users.find((user) => user.email.toLowerCase() === email.toLowerCase()); }
   findUserById(id: string) { return this.users.find((user) => user.id === id); }
+  updateUserAvailability(id: string, isAvailable: boolean) { const user = this.findUserById(id); if (!user) return null; user.isAvailable = isAvailable; return user; }
   createUser(input: { name: string; email: string; passwordHash: string; role: Role }) { const user: UserRecord = { id: randomUUID(), ...input, isAvailable: input.role === 'VOLUNTEER' }; this.users.push(user); return user; }
   createRequest(input: Omit<RequestRecord, 'id' | 'createdAt' | 'updatedAt' | 'requesterName'> & { requesterName: string }) { const request: RequestRecord = { ...input, id: randomUUID(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }; this.requests.unshift(request); return request; }
   createOffer(input: Omit<OfferRecord, 'id' | 'createdAt' | 'ownerName'> & { ownerName: string }) { const offer: OfferRecord = { ...input, id: randomUUID(), createdAt: new Date().toISOString() }; this.offers.unshift(offer); return offer; }
   createHazard(input: Omit<HazardRecord, 'id' | 'createdAt' | 'reporterName'> & { reporterName: string }) { const hazard: HazardRecord = { ...input, id: randomUUID(), createdAt: new Date().toISOString() }; this.hazards.unshift(hazard); return hazard; }
-  claimRequest(id: string, volunteer: AuthUser) { const request = this.requests.find((item) => item.id === id); if (!request || !['OPEN', 'MATCHED'].includes(request.status)) return null; request.status = 'ACCEPTED'; request.assignedVolunteerId = volunteer.id; request.assignedVolunteerName = volunteer.name; request.updatedAt = new Date().toISOString(); return request; }
-  updateRequestStatus(id: string, status: RequestRecord['status']) { const request = this.requests.find((item) => item.id === id); if (!request) return null; request.status = status; request.updatedAt = new Date().toISOString(); if (status === 'RESOLVED') request.resolvedAt = request.updatedAt; return request; }
-  voteHazard(id: string, userId: string, vote: 'CONFIRM' | 'DISPUTE') { const key = `${id}:${userId}`; if (this.votes.has(key)) return 'DUPLICATE'; this.votes.add(key); const hazard = this.hazards.find((item) => item.id === id); if (!hazard) return null; if (vote === 'CONFIRM') { hazard.confirmations += 1; if (hazard.confirmations >= 3) hazard.verification = 'COMMUNITY_VERIFIED'; } else hazard.disputes += 1; return hazard; }
+  claimRequest(id: string, volunteer: AuthUser) { const request = this.requests.find((item) => item.id === id); if (!request || !['OPEN', 'MATCHED'].includes(request.status) || request.assignedVolunteerId) return null; request.status = 'ACCEPTED'; request.assignedVolunteerId = volunteer.id; request.assignedVolunteerName = volunteer.name; request.updatedAt = new Date().toISOString(); this.assignments.push({ requestId: id, volunteerId: volunteer.id, assignedAt: request.updatedAt }); const notification = this.createNotification({ userId: request.requesterId, title: 'Request accepted', description: `${volunteer.name} is responding to your help request.`, type: 'REQUEST' }); return { request, notification }; }
+  updateRequestStatus(id: string, status: RequestRecord['status'], expectedStatus?: RequestRecord['status']) { const request = this.requests.find((item) => item.id === id); if (!request || (expectedStatus && request.status !== expectedStatus)) return null; request.status = status; request.updatedAt = new Date().toISOString(); if (status === 'RESOLVED') request.resolvedAt = request.updatedAt; if (['RESOLVED', 'CANCELLED'].includes(status)) { const assignment = this.assignments.find((item) => item.requestId === id && !item.releasedAt); if (assignment) assignment.releasedAt = request.updatedAt; } return request; }
+  voteHazard(id: string, userId: string, vote: 'CONFIRM' | 'DISPUTE') { const hazard = this.hazards.find((item) => item.id === id); if (!hazard) return null; const key = `${id}:${userId}`; if (this.votes.has(key)) return 'DUPLICATE'; this.votes.add(key); if (vote === 'CONFIRM') { hazard.confirmations += 1; if (hazard.confirmations >= 3) hazard.verification = 'COMMUNITY_VERIFIED'; } else hazard.disputes += 1; return hazard; }
+  createNotification(input: Omit<NotificationRecord, 'id' | 'createdAt' | 'read'>) { const notification: NotificationRecord = { ...input, id: randomUUID(), read: false, createdAt: new Date().toISOString() }; this.notifications.unshift(notification); return notification; }
+  markNotificationRead(userId: string, id: string) { const notification = this.notifications.find((item) => item.id === id && item.userId === userId); if (!notification) return null; notification.read = true; return notification; }
+  markAllNotificationsRead(userId: string) { let updated = 0; for (const notification of this.notifications) if (notification.userId === userId && !notification.read) { notification.read = true; updated += 1; } return updated; }
+  getDashboardStats(): DashboardStats { return { openRequests: this.requests.filter((item) => ['OPEN', 'MATCHED', 'ACCEPTED', 'IN_PROGRESS'].includes(item.status)).length, availableOffers: this.offers.filter((item) => item.status === 'ACTIVE').length, activeHazards: this.hazards.filter((item) => item.verification !== 'REJECTED').length, criticalAlerts: this.alerts.filter((item) => item.severity === 'CRITICAL').length, resolvedToday: this.requests.filter((item) => item.status === 'RESOLVED' && item.resolvedAt && new Date(item.resolvedAt).toDateString() === new Date().toDateString()).length, volunteersAvailable: this.users.filter((item) => item.role === 'VOLUNTEER' && item.isAvailable).length }; }
+  upsertLiveLocation(input: LiveLocationRecord) { this.liveLocations.set(input.userId, input); return input; }
+  deleteLiveLocation(userId: string) { return this.liveLocations.delete(userId); }
+  listLiveLocations() { const now = Date.now(); for (const [id, location] of this.liveLocations) if (new Date(location.expiresAt).getTime() <= now) this.liveLocations.delete(id); return [...this.liveLocations.values()]; }
 }
 
 export const memoryStore = new MemoryStore();

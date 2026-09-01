@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { findUserById } from '../database/repository.js';
 import type { AuthUser, Role } from '../types.js';
+import { AppError } from '../services/errors.js';
 
 export interface AuthenticatedRequest extends Request { user?: AuthUser; }
 
@@ -19,4 +20,11 @@ export async function requireAuth(req: AuthenticatedRequest, res: Response, next
 
 export function requireRole(...roles: Role[]) { return (req: AuthenticatedRequest, res: Response, next: NextFunction) => { if (!req.user || !roles.includes(req.user.role)) return fail(res, 'FORBIDDEN', 'You do not have permission to perform this action.', 403); next(); }; }
 
-export function errorHandler(error: unknown, _req: Request, res: Response, _next: NextFunction) { const message = error instanceof Error ? error.message : 'Unexpected server error.'; if (message.includes('duplicate') || message.includes('unique')) return fail(res, 'CONFLICT', 'That record already exists.', 409); console.error('[rescue-link]', error); return fail(res, 'INTERNAL_ERROR', 'Something went wrong. Please try again.', 500); }
+export function errorHandler(error: unknown, _req: Request, res: Response, _next: NextFunction) {
+  if (error instanceof AppError) return fail(res, error.code, error.message, error.status);
+  if (error instanceof Error && error.name === 'VALIDATION_ERROR') return fail(res, 'INVALID_REQUEST', error.message, 422);
+  const message = error instanceof Error ? error.message : 'Unexpected server error.';
+  if (message.includes('duplicate') || message.includes('unique')) return fail(res, 'CONFLICT', 'That record already exists.', 409);
+  console.error('[rescue-link]', error);
+  return fail(res, 'INTERNAL_ERROR', 'Something went wrong. Please try again.', 500);
+}

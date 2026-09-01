@@ -14,3 +14,8 @@ export interface OfferRecord { id: string; ownerId: string; ownerName: string; c
 export interface HazardRecord { id: string; type: HazardType; description: string; severity: Severity; locationLabel: string; lat: number; lng: number; reporterId: string; reporterName: string; verification: HazardVerification; confirmations: number; disputes: number; createdAt: string; distanceKm?: number; }
 export interface AlertRecord { id: string; title: string; description: string; severity: Severity; area: string; radiusKm?: number; createdAt: string; expiresAt?: string; }
 export interface NotificationRecord { id: string; userId: string; title: string; description: string; type: 'REQUEST' | 'HAZARD' | 'ALERT' | 'SYSTEM'; read: boolean; createdAt: string; }
+export interface Pagination { page: number; limit: number; total: number; totalPages: number; }
+export interface Page<T> { items: T[]; pagination: Pagination; }
+export interface DashboardStats { openRequests: number; availableOffers: number; activeHazards: number; criticalAlerts: number; resolvedToday: number; volunteersAvailable: number; }
+export interface UserSummary { id: string; name: string; email: string; role: Role; isAvailable: boolean; locationLabel?: string; createdAt: string; }
+export interface LiveLocationRecord { userId: string; name: string; status: string; note?: string; lat: number; lng: number; expiresAt: string; updatedAt?: string; }

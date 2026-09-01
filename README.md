@@ -32,7 +32,7 @@ Express modular monolith + Zod
 PostgreSQL + PostGIS (or demo memory store locally)
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the request lifecycle, matching score, data model, privacy decisions, and scaling notes.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the request lifecycle, matching score, data model, privacy decisions, pagination, and scaling notes.
 
 ## Tech stack
 
@@ -70,7 +70,29 @@ npm test
 npm run build
 ```
 
-The backend tests cover registration, duplicate accounts, password authentication, request validation, role authorization, and the race-safe claim path.
+The default test command covers the backend API and key frontend interactions. The database suite runs against a dedicated PostgreSQL/PostGIS instance after applying `database/schema.sql`:
+
+```bash
+docker compose up -d db
+psql postgresql://rescue:rescue@localhost:5432/rescue_link -f database/schema.sql
+$env:RUN_DB_INTEGRATION="true"
+$env:DATABASE_URL="postgresql://rescue:rescue@localhost:5432/rescue_link"
+npm run test:integration
+```
+
+GitHub Actions runs the same PostGIS path with a service container. The integration suite covers radius filtering, distance ordering, unique votes, and concurrent claims.
+
+## Screenshots
+
+Add current screenshots here before sharing the repository publicly. Do not use fabricated images.
+
+Suggested captures:
+
+1. Login and demo entry
+2. Dashboard with live counts
+3. Help requests and request form
+4. Emergency map with filters
+5. Admin hazard verification queue
 
 ## API overview
 
@@ -89,6 +111,9 @@ Authentication uses the `rescue_session` HTTP-only cookie. API responses follow 
 | GET/POST | `/api/hazards` | List and create hazard reports |
 | POST | `/api/hazards/:id/vote` | Confirm or dispute a hazard once per user |
 | GET/POST | `/api/alerts` | Read alerts or create admin alerts |
+| GET | `/api/dashboard` | Read database-backed workspace stats |
+| GET/PATCH | `/api/notifications` | Read and update personal notifications |
+| GET | `/api/admin/users` | Read safe user summaries for admins |
 | GET | `/api/live-locations` | Read active temporary locations (volunteer/admin) |
 | POST | `/api/live-locations/start` | Start a 5–15 minute temporary share |
 | POST | `/api/live-locations/stop` | Stop the current user's share |
@@ -101,4 +126,4 @@ Passwords are never stored in plain text. Authentication failures are intentiona
 
 ## Future improvements
 
-Production deployment would add a managed PostGIS instance, Redis-backed Socket.IO scaling, background cleanup for expired live locations, stronger audit reporting, automated accessibility checks, and an operations runbook for emergency partners.
+Deployment requires separate frontend and API origins, a managed PostgreSQL/PostGIS database, production JWT and cookie secrets, and matching CORS/API URL settings. Production improvements still planned include Redis-backed Socket.IO scaling, scheduled cleanup for expired live locations, stronger audit reporting, automated accessibility checks, and an operations runbook for emergency partners.

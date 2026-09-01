@@ -14,6 +14,7 @@ import { alertsRouter } from './routes/alerts.js';
 import { adminRouter } from './routes/admin.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { liveLocationsRouter } from './routes/liveLocations.js';
+import { dashboardRouter } from './routes/dashboard.js';
 import { createSocketServer } from './sockets/index.js';
 
 export function createApp() {
@@ -31,6 +32,7 @@ export function createApp() {
   app.use('/api/admin', adminRouter);
   app.use('/api/notifications', notificationsRouter);
   app.use('/api/live-locations', liveLocationsRouter);
+  app.use('/api/dashboard', dashboardRouter);
   app.get('/health', (_req, res) => ok(res, { status: 'ok', service: 'rescue-link-api', database: process.env.DATABASE_URL ? 'configured' : 'demo-memory' }));
   app.use(errorHandler);
   return app;

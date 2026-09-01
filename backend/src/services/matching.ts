@@ -14,5 +14,6 @@ export function scoreOfferForRequest(request: Pick<RequestRecord, 'category' | '
   return { score: Math.round(categoryScore + distanceScore + availabilityScore + urgencyScore), breakdown: { categoryScore, distanceScore: Math.round(distanceScore), availabilityScore, urgencyScore }, distanceKm: Number(distance.toFixed(2)) };
 }
 
-export function rankOffers(request: Pick<RequestRecord, 'category' | 'urgency' | 'lat' | 'lng'>, offers: OfferRecord[]) { return offers.map((offer) => ({ offer, ...scoreOfferForRequest(request, offer) })).filter((match) => match.distanceKm <= match.offer.radiusKm).sort((a, b) => b.score - a.score); }
+export function isOfferCompatible(requestCategory: Category, offerCategory: Category) { return compatible.get(requestCategory)?.includes(offerCategory) ?? false; }
+export function rankOffers(request: Pick<RequestRecord, 'category' | 'urgency' | 'lat' | 'lng'>, offers: OfferRecord[]) { return offers.map((offer) => ({ offer, ...scoreOfferForRequest(request, offer) })).filter((match) => match.offer.status === 'ACTIVE' && isOfferCompatible(request.category, match.offer.category) && match.distanceKm <= match.offer.radiusKm).sort((a, b) => b.score - a.score); }
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) { const r = 6371; const toRad = (value: number) => value * Math.PI / 180; const a = Math.sin(toRad(lat2 - lat1) / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(toRad(lng2 - lng1) / 2) ** 2; return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); }

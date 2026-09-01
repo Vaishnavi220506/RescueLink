@@ -7,5 +7,5 @@ Use only the bullets that match the features you can demonstrate in the reposito
 - Implemented location-aware discovery with PostGIS geography points, radius filtering, calculated distance, and GIST spatial indexes.
 - Protected volunteer request acceptance with a conditional server-side update so concurrent volunteers cannot claim the same request.
 - Added bcrypt password hashing, HTTP-only JWT cookies, Zod validation, consistent API errors, Helmet, CORS, and login rate limiting.
-- Created a responsive operations dashboard with live map layers, community hazard confirmation, temporary location sharing, privacy controls, and accessible loading/empty/error states.
-- Added Vitest/Supertest coverage for authentication, validation, role authorization, duplicate hazard votes, and request claiming, plus Docker Compose and GitHub Actions CI.
+- Created a responsive operations dashboard with live map layers, community hazard confirmation, temporary location sharing, privacy controls, and reusable empty/error states.
+- Added Vitest/Supertest and React Testing Library coverage for authentication, validation, role authorization, lifecycle transitions, matching rules, duplicate hazard votes, request claiming, and key form interactions, plus Docker Compose and GitHub Actions CI.

@@ -1,43 +1,99 @@
 # RescueLink architecture
 
-## Frontend
+RescueLink is a modular monolith. It keeps the domain in one understandable backend while separating storage, validation, business rules, and delivery concerns.
 
-The React client is organized by product responsibility: reusable visual primitives live in `components`, route screens live in `pages`, API calls live in `services/api.ts`, and the small `AppContext` holds authenticated identity, cached demo data, optimistic mutations, and toast messages. React Router protects the workspace shell and keeps admin routes role-aware.
+```text
+Browser
+  │
+  ├── REST / Axios ───────┐
+  └── Socket.IO ──────────┤
+                          ▼
+                 Express + TypeScript
+                 ├─ authentication / RBAC
+                 ├─ request lifecycle service
+                 ├─ matching service
+                 ├─ notification persistence
+                 └─ scoped realtime rooms
+                          ▼
+                 PostgreSQL + PostGIS
+```
 
-The map is a focused component. It accepts requests, offers, and hazards as data and reports a selected marker to a side panel. This keeps map rendering separate from request or hazard business rules.
+## Frontend structure
 
-## Backend
+- `frontend/src/pages` contains route-level screens for the dashboard, requests, offers, hazards, map, alerts, activity, profile, and admin tools.
+- `frontend/src/components` contains reusable cards, forms, map rendering, and shell elements.
+- `frontend/src/services/api.ts` owns HTTP calls, consistent error conversion, response normalization, and pagination compatibility.
+- `frontend/src/context/AppContext.tsx` owns the authenticated user, hydrated workspace data, optimistic mutations, realtime updates, and toast messages.
+- The client may use the memory-backed demo only when the API is unavailable. HTTP errors such as 403, 409, and 422 remain visible to the user instead of being converted into fake success.
 
-Express is a modular monolith. Routes describe HTTP boundaries, validators reject untrusted input, middleware handles authentication/roles/errors, repositories handle storage, and services contain explainable business logic such as volunteer matching and temporary location TTLs. The API can use PostgreSQL when `DATABASE_URL` is set; otherwise it uses a memory store for local UI exploration and tests.
+## Backend structure
 
-## Database
+- `routes/` defines HTTP boundaries and delegates after validation and authorization.
+- `validators/` uses Zod to validate bodies, query strings, and route parameters.
+- `middleware/` handles authentication, roles, common success/error responses, and security boundaries.
+- `services/requestService.ts` owns lifecycle rules, actor permissions, optimistic-concurrency checks, and participant notifications.
+- `services/matching.ts` owns the explainable offer score and filters incompatible, inactive, and out-of-radius offers.
+- `services/liveLocation.ts` owns the short-lived location contract.
+- `database/repository.ts` is a small storage facade. Domain SQL lives in `database/repositories/` modules for users, requests, offers, hazards, alerts, notifications, live locations, dashboard aggregates, and shared pagination helpers.
+- `sockets/` authenticates Socket.IO connections and controls room membership and event scope.
 
-PostgreSQL stores relational ownership and lifecycle data. PostGIS stores coordinates as `geography(Point,4326)` so distance is measured in meters. GIST indexes support nearby searches. Common filter fields—status, category, urgency, role, owners, expiry, and notification read state—also have indexes.
+## Database and PostGIS
 
-## Request lifecycle
+PostgreSQL stores ownership, lifecycle, votes, assignments, alerts, notifications, and audit-ready records. Coordinates are stored as `geography(Point,4326)`. GIST indexes support spatial lookups; ordinary indexes cover status, category, urgency, type, verification, ownership, creation time, expiry, and notification read state.
 
-1. An authenticated user submits a validated request, which starts as `OPEN`.
-2. A nearby volunteer sees it through normal filters or a PostGIS radius query.
-3. The volunteer calls `POST /api/requests/:id/accept`.
-4. The database updates the row only when its status is still `OPEN` or `MATCHED`. The affected-row count is the concurrency check; a second claim receives a conflict response.
-5. A volunteer or admin moves the request through `IN_PROGRESS` and `RESOLVED`. Citizens can only cancel their own request in the complete authorization layer.
+Nearby list queries construct one parameterized point with `ST_SetSRID(ST_MakePoint(lng, lat), 4326)::geography`. PostgreSQL applies `ST_DWithin(entity.location, point, radiusMetres)` before applying `LIMIT/OFFSET`. `ST_Distance` supplies `distanceKm`, and the query orders by that value. The Node process does not load all PostgreSQL rows to calculate or filter distances.
 
-## Real-time flow
+Requests, offers, and hazards expose nearby endpoints as aliases of their normal list routes. Their relevant filters and pagination are applied in the same database query. List responses always use:
 
-Socket.IO is attached to the same HTTP server. Clients can join an area room. Request, hazard, and alert route handlers are the natural places to emit scoped events such as `request:accepted` or `hazard:new`. Temporary location updates are broadcast only to relevant connected peers and include a server-side expiry.
+```json
+{ "items": [], "pagination": { "page": 1, "limit": 20, "total": 143, "totalPages": 8 } }
+```
 
-## Matching algorithm
+`COUNT(*) OVER()` keeps the total tied to the exact filtered query rather than the number of rows returned on the current page.
 
-The matching service is intentionally rule-based: category compatibility contributes 50 points, distance contributes up to 30 points, active availability contributes 15 points, and urgency contributes 1–5 points. Offers outside their declared radius are discarded. The score is explainable and easy to adjust; it is not presented as machine learning.
+## Matching engine
 
-## Authentication and authorization
+Matching is deliberately rule-based and explainable. Category compatibility contributes the largest score, distance contributes up to 30 points, active availability contributes 15 points, and urgency contributes a small priority value. Offers must be active, category-compatible, and within the offer's declared radius. The service returns a score breakdown so a volunteer or interviewer can understand the ordering. It is not machine learning.
 
-Registration hashes passwords with bcrypt. Login issues a signed JWT in an HTTP-only cookie. `requireAuth` loads the current user from the database, and `requireRole` protects volunteer/admin operations at the API boundary. The frontend only improves the user experience; it is never the security boundary.
+## Request lifecycle and concurrency
 
-## Privacy
+The normal path is:
 
-Approximate neighborhood context is used for discovery. Exact live location requires an explicit start action, is held for a 5–15 minute TTL, and can be stopped. Public cards do not expose phone numbers. Hazard reports show community confirmation counts separately from admin verification.
+```text
+OPEN → MATCHED → ACCEPTED → IN_PROGRESS → RESOLVED
+  └──────────────────────────────→ CANCELLED
+```
 
-## Scaling considerations
+The server rejects invalid transitions. Citizens can cancel only their own request; volunteers can update only requests assigned to them; administrators retain operational access subject to the same valid state changes.
 
-The first deployment is a single modular backend. If usage grows, the next practical steps are connection pooling, Redis adapter support for multiple Socket.IO instances, background cleanup of expired locations, read replicas for map discovery, and an immutable audit trail for moderation actions. The domain can remain a modular monolith until those pressures are real.
+Claiming is the important concurrency boundary. PostgreSQL runs a conditional update that requires an open state and no assignment, inside a transaction. The transaction then inserts `request_assignments` and the requester's notification before commit. The unique active-assignment index and affected-row result ensure a second volunteer receives a conflict instead of overwriting the first claim. The memory adapter mirrors this behavior for local development.
+
+## Notifications
+
+Notifications are durable rows with owner, type, read flag, and timestamp. Request acceptance, lifecycle changes, and hazard moderation create notifications. Read and read-all endpoints always include the authenticated user ID in the update condition, so one user cannot mark another user's notification.
+
+## Socket.IO rooms and authentication
+
+The socket handshake verifies the same signed JWT session cookie or bearer token used by the REST API and reloads the current user from storage. Each socket joins `user:<userId>` and `role:<role>`. Request rooms are allowed only to the requester, assigned volunteer, or an administrator. Workspace area joins use the server-known user area rather than a client-supplied identity.
+
+Request events are scoped to the relevant user/request rooms. Hazard and alert events are scoped to area and administrator rooms. This avoids broadcasting sensitive updates to every connected browser. A multi-instance deployment can add the Socket.IO Redis adapter later without changing the domain events.
+
+## Location privacy
+
+Approximate area is used for discovery. Exact live location requires an explicit start action, is stored with a five-to-fifteen-minute expiry, and can be stopped. Query code always requires `expires_at > now()`. Only volunteers and administrators can query active live locations, and location events are sent to those role rooms rather than globally.
+
+## Security
+
+Passwords use bcrypt. Sessions are signed, HTTP-only cookies with production `secure` behavior. Public registration accepts only citizen and volunteer roles. The API reloads role data server-side, validates inputs with Zod, uses parameterized SQL, applies Helmet and CORS, rate-limits authentication routes, and hides stack traces and SQL details from production responses.
+
+Contact preferences are stored as a request workflow choice; phone numbers are not part of public request or list payloads. In-app communication is the safe default.
+
+## Testing and delivery
+
+Vitest/Supertest cover API auth, validation, authorization, lifecycle behavior, duplicate voting, notification ownership, pagination, and matching rules. A separate PostGIS suite covers spatial filtering, distance ordering, one-claim concurrency, and database vote uniqueness; it runs when `RUN_DB_INTEGRATION=true` with a dedicated database. React Testing Library covers shared button behavior and request-form submission. GitHub Actions runs static checks, unit/API tests, a PostGIS service job, and the production build.
+
+Docker Compose starts PostGIS, the API, and the Nginx frontend. Environment variables keep database URLs, secrets, origins, and ports outside source code. The health endpoint reports service status and whether a database URL is configured without exposing credentials.
+
+## Scaling path
+
+The next practical steps are a managed PostGIS database, connection-pool monitoring, a Redis Socket.IO adapter for multiple API instances, scheduled cleanup for expired locations, read models for map discovery, and a stronger immutable audit log for operations. Kafka, Kubernetes, microservices, and extra databases are intentionally out of scope for this project.

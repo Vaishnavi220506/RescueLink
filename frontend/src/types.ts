@@ -16,6 +16,11 @@ export interface User {
   isAvailable?: boolean;
 }
 
+export interface UserSummary extends User {
+  isAvailable: boolean;
+  createdAt: string;
+}
+
 export interface HelpRequest {
   id: string;
   requester: Pick<User, 'id' | 'name'>;
@@ -86,11 +91,25 @@ export interface AppNotification {
   createdAt: string;
 }
 
+export interface LiveLocation {
+  userId: string;
+  name: string;
+  status: string;
+  note?: string;
+  lat: number;
+  lng: number;
+  expiresAt: string;
+  updatedAt?: string;
+}
+
 export interface ToastMessage {
   id: string;
   type: 'success' | 'error' | 'info';
   message: string;
 }
+
+export interface Pagination { page: number; limit: number; total: number; totalPages: number; }
+export interface DashboardStats { openRequests: number; availableOffers: number; activeHazards: number; criticalAlerts: number; resolvedToday: number; volunteersAvailable: number; }
 
 export interface CreateRequestInput {
   category: Category;

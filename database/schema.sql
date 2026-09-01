@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
   location_label VARCHAR(180), created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS users_role_idx ON users(role);
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx ON users (lower(email));
 
 CREATE TABLE IF NOT EXISTS help_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(), requester_id UUID NOT NULL REFERENCES users(id), category request_category NOT NULL,
@@ -29,6 +30,8 @@ CREATE INDEX IF NOT EXISTS help_requests_status_idx ON help_requests(status);
 CREATE INDEX IF NOT EXISTS help_requests_category_idx ON help_requests(category);
 CREATE INDEX IF NOT EXISTS help_requests_urgency_idx ON help_requests(urgency);
 CREATE INDEX IF NOT EXISTS help_requests_requester_idx ON help_requests(requester_id);
+CREATE INDEX IF NOT EXISTS help_requests_assigned_idx ON help_requests(assigned_volunteer_id);
+CREATE INDEX IF NOT EXISTS help_requests_created_idx ON help_requests(created_at DESC);
 CREATE INDEX IF NOT EXISTS help_requests_location_idx ON help_requests USING GIST(location);
 
 CREATE TABLE IF NOT EXISTS resource_offers (
@@ -39,6 +42,8 @@ CREATE TABLE IF NOT EXISTS resource_offers (
 );
 CREATE INDEX IF NOT EXISTS resource_offers_status_idx ON resource_offers(status);
 CREATE INDEX IF NOT EXISTS resource_offers_owner_idx ON resource_offers(owner_id);
+CREATE INDEX IF NOT EXISTS resource_offers_category_idx ON resource_offers(category);
+CREATE INDEX IF NOT EXISTS resource_offers_created_idx ON resource_offers(created_at DESC);
 CREATE INDEX IF NOT EXISTS resource_offers_location_idx ON resource_offers USING GIST(location);
 
 CREATE TABLE IF NOT EXISTS hazards (
@@ -49,6 +54,8 @@ CREATE TABLE IF NOT EXISTS hazards (
 );
 CREATE INDEX IF NOT EXISTS hazards_verification_idx ON hazards(verification);
 CREATE INDEX IF NOT EXISTS hazards_severity_idx ON hazards(severity);
+CREATE INDEX IF NOT EXISTS hazards_type_idx ON hazards(type);
+CREATE INDEX IF NOT EXISTS hazards_created_idx ON hazards(created_at DESC);
 CREATE INDEX IF NOT EXISTS hazards_location_idx ON hazards USING GIST(location);
 
 CREATE TABLE IF NOT EXISTS hazard_votes (

@@ -18,3 +18,38 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: rescue_link
+          POSTGRES_USER: rescue
+          POSTGRES_PASSWORD: rescue
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U rescue -d rescue_link"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply PostGIS schema
+        run: PGPASSWORD=rescue psql -h 127.0.0.1 -U rescue -d rescue_link -f database/schema.sql
+      - name: Run PostGIS and concurrency tests
+        run: npm run test:integration
+        env:
+          NODE_ENV: test
+          RUN_DB_INTEGRATION: true
+          DATABASE_URL: postgresql://rescue:rescue@127.0.0.1:5432/rescue_link
+          JWT_SECRET: integration-test-secret-123456
+          COOKIE_SECRET: integration-cookie-secret-123456
+          FRONTEND_URL: http://localhost:5173
